@@ -1,0 +1,121 @@
+from scrapy.http import FormRequest
+import scrapy
+import json
+import re
+import csv
+
+class Row_item(scrapy.Item):
+	shop_id = scrapy.Field()
+	accuracy_point = scrapy.Field()
+	reviewer_acc_num = scrapy.Field()
+	accuracy_5 = scrapy.Field()
+	accuracy_4 = scrapy.Field()
+	accuracy_3 = scrapy.Field()
+	accuracy_2 = scrapy.Field()
+	accuracy_1 = scrapy.Field()
+	quality_point = scrapy.Field()
+	reviewer_qlt_num = scrapy.Field()
+	quality_5 = scrapy.Field()
+	quality_4 = scrapy.Field()
+	quality_3 = scrapy.Field()
+	quality_2 = scrapy.Field()
+	quality_1 = scrapy.Field()
+
+
+class ajxSpider(scrapy.Spider):
+	name="ajx_acc_qlt"
+	def start_requests(self):
+		url_list = []
+		with open('../../Data/approval_april_edit.csv', 'rb') as csvfile:
+			data_reader = csv.reader(csvfile, delimiter=',', quotechar='|')
+			for row in  data_reader:
+				join = 'https://www.tokopedia.com/'+ row[0] +'/info'
+				url_list.append(join)
+
+		allowed_domain = 'www.tokopedia.com'
+		for url in url_list:
+			yield scrapy.Request(url=url, callback=self.parse)
+
+	def parse(self,response):
+		id_selector = "".join(response.xpath('//input[@id="shop-id"]/@value').extract_first())
+		name_selector = response.xpath('//div[@id="gold-info"]/div/div/a/h1/text()').extract_first()
+		url = 'https://www.tokopedia.com/ajax/shop/shop-charts.pl'
+		form_data = {'action' : 'get_shop_rating','shop_id' : id_selector}
+		yield FormRequest(url, callback=self.parse_info_acc_qlt, formdata=form_data,meta={'shop_id': id_selector})
+
+
+	def parse_info_acc_qlt(self,response):
+		shop_id = response.request.meta['shop_id']
+		res = response.body_as_unicode()
+		res_proces = res.replace("\'"," ")
+		res_out = json.loads(res_proces)  
+		body_accuracy = res_out["html_accuracy"]
+		body_quality = res_out["html_quality"]
+		sel_accuracy = scrapy.Selector(text=body_accuracy)
+		sel_quality = scrapy.Selector(text=body_quality)
+		
+		path_total_accuracy = sel_accuracy.xpath('//div[@class="score-container w-120 p-10"]')
+		path_detail_accuracy = sel_accuracy.xpath('//div[@class="rating-histogram p-10"]')
+		path_total_quality = sel_quality.xpath('//div[@class="score-container w-120 p-10"]')
+		path_detail_quality = sel_quality.xpath('//div[@class="rating-histogram p-10"]')
+		item = Row_item()
+
+		if not path_total_accuracy and not path_total_quality :
+			yield{
+				'shop_id': shop_id,
+				'accuracy_point': 0,
+				'reviewer_acc_num': 0,				
+				'accuracy_5': 0,
+				'accuracy_4': 0,
+				'accuracy_3': 0,
+				'accuracy_2': 0,
+				'accuracy_1': 0,
+				
+				'quality_point': 0,
+				'reviewer_qlt_num': 0,
+				'quality_5': 0,
+				'quality_4': 0,
+				'quality_3': 0,
+				'quality_2': 0,
+				'quality_1': 0,
+			}
+
+		else:
+			for total in path_total_accuracy:
+				accuracy_point = total.xpath('div[@class="score"]/text()').extract_first()
+				reviewer_acc_num = total.xpath('//span[@class="reviews-num"]/text()').extract_first()
+				
+				for detail in path_detail_accuracy:
+					accuracy_5= detail.xpath('//div[@class="rating-bar-container five"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					accuracy_4= detail.xpath('//div[@class="rating-bar-container four"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					accuracy_3= detail.xpath('//div[@class="rating-bar-container three"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					accuracy_2= detail.xpath('//div[@class="rating-bar-container two"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					accuracy_1= detail.xpath('//div[@class="rating-bar-container one"]/span[@class="bar-number mt-7"]/text()').extract_first()
+			
+			for total in path_total_quality:
+				quality_point = total.xpath('div[@class="score"]/text()').extract_first()
+				reviewer_qlt_num = total.xpath('//span[@class="reviews-num"]/text()').extract_first()
+				
+				for detail in path_detail_quality:
+					quality_5= detail.xpath('//div[@class="rating-bar-container five"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					quality_4= detail.xpath('//div[@class="rating-bar-container four"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					quality_3= detail.xpath('//div[@class="rating-bar-container three"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					quality_2= detail.xpath('//div[@class="rating-bar-container two"]/span[@class="bar-number mt-7"]/text()').extract_first()
+					quality_1= detail.xpath('//div[@class="rating-bar-container one"]/span[@class="bar-number mt-7"]/text()').extract_first()		
+			yield{
+				'shop_id': shop_id,
+				'accuracy_point': accuracy_point,
+				'reviewer_acc_num': reviewer_acc_num,
+				'quality_point': quality_point,
+				'reviewer_qlt_num': reviewer_qlt_num,
+				'accuracy_5': accuracy_5,
+				'accuracy_4': accuracy_4,
+				'accuracy_3': accuracy_3,
+				'accuracy_2': accuracy_2,
+				'accuracy_1':accuracy_1,
+				'quality_5':quality_5,
+				'quality_4':quality_4,
+				'quality_3':quality_3,
+				'quality_2':quality_2,
+				'quality_1':quality_1,
+			}
